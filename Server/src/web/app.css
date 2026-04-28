@@ -24,23 +24,32 @@
   button:disabled { opacity: .5; cursor: default; }
   .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
   .actions { display: grid; gap: 12px; }
-  .table { height: 100%; min-width: 0; }
+  .table { height: 100%; min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 10px; }
   .felt { position: relative; height: 100%; overflow: hidden; border-radius: 160px; padding: 24px; background: radial-gradient(ellipse at center, #2f7b63 0, #1d634f 58%, #134337 100%); border: 14px solid #4a2d1f; box-shadow: inset 0 0 0 6px rgba(214,174,85,.55), inset 0 20px 70px rgba(255,255,255,.08), 0 24px 80px rgba(0,0,0,.36); }
   .felt::before { content: ""; position: absolute; inset: 20px; border: 2px solid rgba(242,224,156,.24); border-radius: 140px; pointer-events: none; }
+  .table-hands { position: absolute; z-index: 2; left: 44px; right: 44px; top: 34px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; max-height: 112px; overflow: auto; }
+  .table-hand { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 0; padding: 4px 6px; border-radius: 8px; background: transparent; }
+  .table-hand .cards { justify-content: center; min-height: 42px; }
+  .table-hand .card { width: 30px; height: 42px; font-size: 12px; border-radius: 6px; }
+  .table-bet { display: grid; justify-items: center; gap: 3px; min-width: 42px; }
+  .table-bet .money-label { color: #f0d36d; }
+  .table-bet .money-chips { justify-content: center; max-width: 86px; }
+  .table-bet .chip { width: 22px; height: 22px; border-width: 2px; font-size: 8px; }
+  .table-bet .chip-count { font-size: 10px; }
   .board-panel { position: absolute; z-index: 1; left: 50%; top: 50%; transform: translate(-50%, -42%); display: grid; justify-items: center; align-content: center; gap: 10px; width: min(410px, 45vw); min-height: 190px; padding: 16px; border-radius: 8px; background: rgba(10,40,34,.28); }
   .pot-center { display: grid; justify-items: center; gap: 8px; min-width: 170px; padding: 10px 16px; border: 1px solid rgba(240,211,109,.42); border-radius: 8px; background: rgba(8,28,25,.78); box-shadow: 0 12px 28px rgba(0,0,0,.24); }
   .pot-center span { color: #d9c27a; font-size: 12px; font-weight: 800; text-transform: uppercase; }
   .pot-center strong { color: #fff7d8; font-size: 24px; line-height: 1; }
-  .players { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; align-content: start; max-height: 100%; }
-  .player { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 10px; background: rgba(7,19,20,.78); color: #f6f1df; box-shadow: 0 10px 28px rgba(0,0,0,.22); }
+  .players { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-content: start; max-height: 190px; overflow: auto; }
+  .player { border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 8px; background: rgba(7,19,20,.78); color: #f6f1df; box-shadow: 0 8px 20px rgba(0,0,0,.18); }
   .player.self { border-color: rgba(217,182,76,.58); background: rgba(25,42,35,.86); }
   .player.current { border-color: #d9b64c; box-shadow: inset 0 0 0 1px #d9b64c, 0 10px 28px rgba(0,0,0,.22); }
   .player.winner { border-color: #f0d36d; box-shadow: inset 0 0 0 2px #f0d36d, 0 0 28px rgba(240,211,109,.28), 0 10px 28px rgba(0,0,0,.22); }
-  .player h3 { margin: 0 0 8px; font-size: 15px; color: #fff7d8; }
-  .me-tag { color: #f0d36d; font-size: 12px; font-weight: 900; }
-  .chip-row { display: grid; gap: 4px; margin-top: 6px; min-height: 28px; }
-  .money-label { color: #d3dacd; font-size: 12px; font-weight: 800; }
-  .money-chips { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; min-height: 28px; }
+  .player h3 { margin: 0 0 6px; font-size: 13px; color: #fff7d8; }
+  .me-tag { color: #f0d36d; font-size: 10px; font-weight: 900; }
+  .chip-row { display: grid; gap: 3px; margin-top: 4px; min-height: 22px; }
+  .money-label { color: #d3dacd; font-size: 10px; font-weight: 800; }
+  .money-chips { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; min-height: 22px; }
   .chip-unit { display: inline-flex; align-items: center; gap: 4px; }
   .chip { width: 28px; height: 28px; border-radius: 50%; display: inline-grid; place-items: center; color: #fff; border: 3px dashed rgba(255,255,255,.78); box-shadow: inset 0 0 0 4px rgba(0,0,0,.16), 0 4px 8px rgba(0,0,0,.28); font-size: 9px; font-weight: 900; line-height: 1; }
   .chip { background: #59656c; }
@@ -76,7 +85,4 @@
   .card.hidden { color: transparent; background: repeating-linear-gradient(45deg, #244f52 0 5px, #19383b 5px 10px); border-color: #8bb7ad; }
   .hint { color: #b4c5be; font-size: 12px; line-height: 1.35; }
   .rank-label { margin-top: 8px; color: #f0d36d; font-size: 12px; font-weight: 800; }
-  .modal-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(3, 9, 10, .72); }
-  .modal { width: min(420px, 100%); display: grid; gap: 16px; background: #102326; border: 1px solid rgba(255,255,255,.16); border-radius: 8px; padding: 20px; box-shadow: 0 24px 80px rgba(0,0,0,.45); }
-  .modal h2 { font-size: 22px; text-transform: none; color: #fff7d8; }
   @media (max-width: 760px) { html, body { overflow: auto; } main { height: auto; min-height: calc(100vh - 54px); padding: 10px; } header { padding: 12px 16px; } .header-status { max-width: calc(100vw - 120px); } .felt { min-height: 620px; border-width: 10px; border-radius: 80px; padding: 16px; } .board-panel { width: min(360px, 70vw); } .action-window { left: 12px; top: 64px; width: 260px; } }

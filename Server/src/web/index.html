@@ -24,8 +24,9 @@
   </section>
   <main id="gameView" class="is-hidden">
   <section class="table">
-    <div class="felt">
     <div id="players" class="players"></div>
+    <div class="felt">
+    <div id="tableHands" class="table-hands"></div>
     <div class="board-panel">
       <div class="pot-center"><span>Pot</span><strong id="potTotal">0</strong><div id="potChips" class="money-chips"></div></div>
       <h2>Table Cards</h2>
@@ -63,16 +64,6 @@
     <button id="replaceCards" class="secondary" disabled>Replace Selected</button>
     <button id="standPat" class="secondary">Stand Pat</button>
     <div class="hint">Select cards from your hand to replace them.</div>
-  </div>
-  </div>
-  <div id="gameOverModal" class="modal-backdrop is-hidden">
-  <div class="modal">
-    <h2>Keep playing?</h2>
-    <div class="hint">This hand is over. Stay seated for the next hand or leave the table.</div>
-    <div class="row">
-    <button id="keepPlaying">Keep Playing</button>
-    <button id="leaveAfterGame" class="danger">Leave Table</button>
-    </div>
   </div>
   </div>
   <script src="/app.js"></script>

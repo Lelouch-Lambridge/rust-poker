@@ -138,7 +138,7 @@ impl DbRepo {
       &[&game_id, &game_type],
     ).await;
 
-    let insert_result = client.query_one(
+    let insert_result = client.query_opt(
       "INSERT INTO game_states (game_id, round, event, data)
       VALUES ($1, $2, $3, $4)
       ON CONFLICT (game_id, round) DO NOTHING
@@ -147,7 +147,7 @@ impl DbRepo {
     ).await;
 
     match insert_result {
-      Ok(row) => {
+      Ok(Some(row)) => {
         let saved_round: i32 = row.get(0);
         debug!("Inserted game_state: game_id={}, round={}", game_id, saved_round);
         let Some(players) = data.get("players").and_then(|p| p.as_array()) else { return; };
@@ -161,6 +161,9 @@ impl DbRepo {
             &[&game_id, &(player_id as i64)],
           ).await;
         }
+      }
+      Ok(None) => {
+        debug!("Skipped duplicate game_state: game_id={}, round={}", game_id, round);
       }
       Err(e) => {
         error!("Failed to insert {} game state: {}", event, e);

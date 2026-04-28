@@ -2,7 +2,7 @@ use std::fmt;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket, SocketAddr, IpAddr, Ipv4Addr};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use socket2::{Socket, Domain, Type, Protocol, SockRef};
 use serde_json::{json, to_string};
 use poker::{hand::Hand, player::{Player, PlayerNode}, game::Game};
@@ -11,6 +11,11 @@ use std::any::type_name;
 pub mod db;
 use db::GameDatabase;
 use uuid::Uuid;
+
+pub fn db_runtime() -> &'static tokio::runtime::Runtime {
+  static DB_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+  DB_RUNTIME.get_or_init(|| tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"))
+}
 
 pub struct Table<G: Game, Db: GameDatabase> {
   game_id: Uuid,
@@ -106,6 +111,39 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
 
   pub fn is_running(&self) -> bool {
     self.turn.is_some()
+  }
+
+  fn rebuild_full_ring(&mut self) {
+    if self.players.is_empty() {
+      self.head = None;
+      self.blind = None;
+      return;
+    }
+
+    let nodes = self.players.values().cloned().collect::<Vec<_>>();
+    let len = nodes.len();
+
+    for (index, node) in nodes.iter().enumerate() {
+      let prev = nodes[(index + len - 1) % len].clone();
+      let next = nodes[(index + 1) % len].clone();
+      let mut locked = node.lock().unwrap();
+      locked.prevf = Some(prev);
+      locked.nextf = Some(next);
+    }
+
+    let head_still_present = self.head.as_ref().is_some_and(|head| {
+      self.players.values().any(|node| Arc::ptr_eq(node, head))
+    });
+    if !head_still_present {
+      self.head = Some(nodes[0].clone());
+    }
+
+    let blind_still_present = self.blind.as_ref().is_some_and(|blind| {
+      self.players.values().any(|node| Arc::ptr_eq(node, blind))
+    });
+    if !blind_still_present {
+      self.blind = self.head.clone();
+    }
   }
 
   fn reset(&mut self) {
@@ -265,6 +303,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
 
     self.players.remove(&player_id).ok_or("Player not found")?;
+    self.rebuild_full_ring();
     self.delete_player(player_id);
     Ok("REMOVED\n".to_string())
   }
@@ -279,6 +318,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
 
   pub fn start_game(&mut self) {
     trace!("Starting Game…");
+    self.rebuild_full_ring();
     self.game_id = Uuid::new_v4();
     self.showdown = None;
     self.next_game_players.clear();
@@ -532,8 +572,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     let db = Arc::clone(&self.db);
 
     std::thread::spawn(move || {
-      let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-      rt.block_on(async move {
+      db_runtime().block_on(async move {
         db.upsert_player(&player).await;
       });
     });
@@ -543,8 +582,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     let db = Arc::clone(&self.db);
 
     std::thread::spawn(move || {
-      let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-      rt.block_on(async move {
+      db_runtime().block_on(async move {
         db.delete_player(player_id).await;
       });
     });
@@ -558,8 +596,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     let db = Arc::clone(&self.db);
 
     std::thread::spawn(move || {
-      let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
-      rt.block_on(async move {
+      db_runtime().block_on(async move {
         debug!("Saving game state: {}", event);
         db.save_game_state(&event, &game_type, &snapshot).await;
         debug!("Finished saving game state: {}", event);

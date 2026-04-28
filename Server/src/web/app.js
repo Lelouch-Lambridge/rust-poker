@@ -12,9 +12,7 @@ const game = document.querySelector("#game");
   let selectedCards = new Set();
   let pendingRaise = 0;
   let hasSeenRunning = false;
-  let gameOverPromptShown = false;
-  let showdownKey = "";
-  let showdownPromptTimer = null;
+  let autoKeepPlayingKey = "";
 
   function ensureClientName() {
     if (!localStorage.getItem("pokerClientName")) {
@@ -149,22 +147,14 @@ const game = document.querySelector("#game");
     return `${state.showdown.winner}:${playerIds}:${state.game?.round ?? 0}`;
   }
 
-  function clearShowdownPromptTimer() {
-    if (showdownPromptTimer) {
-    clearTimeout(showdownPromptTimer);
-    showdownPromptTimer = null;
-    }
-  }
-
-  function scheduleShowdownPrompt(state) {
+  function autoKeepPlaying(state) {
     const key = showdownId(state);
-    if (!key || key === showdownKey) return;
+    if (!joined || !state.me || !key || key === autoKeepPlayingKey) return;
 
-    showdownKey = key;
-    clearShowdownPromptTimer();
-
-    const playerCount = state.showdown.players?.length || 0;
-    showdownPromptTimer = setTimeout(showGameOverPrompt, 3000 + (500 * playerCount));
+    autoKeepPlayingKey = key;
+    send("KEEP_PLAYING")
+    .then(() => requestRefresh().catch(() => {}))
+    .catch(() => {});
   }
 
   function updateReplaceButton() {
@@ -203,15 +193,6 @@ const game = document.querySelector("#game");
     document.querySelector("#gameTitle").textContent = game.value;
   }
 
-  function showGameOverPrompt() {
-    gameOverPromptShown = true;
-    document.querySelector("#gameOverModal").classList.remove("is-hidden");
-  }
-
-  function hideGameOverPrompt() {
-    document.querySelector("#gameOverModal").classList.add("is-hidden");
-  }
-
   function renderBoard(state) {
     const board = document.querySelector("#board");
     const cards = state.game?.community_cards || [];
@@ -238,18 +219,13 @@ const game = document.querySelector("#game");
 
     if (joined && state.is_running) {
     hasSeenRunning = true;
-    gameOverPromptShown = false;
-    showdownKey = "";
-    clearShowdownPromptTimer();
-    hideGameOverPrompt();
-    } else if (joined && state.me && hasSeenRunning && state.showdown) {
-    scheduleShowdownPrompt(state);
-    } else if (joined && state.me && hasSeenRunning && !gameOverPromptShown) {
-    showGameOverPrompt();
+    autoKeepPlayingKey = "";
     }
 
     const players = document.querySelector("#players");
+    const tableHands = document.querySelector("#tableHands");
     players.innerHTML = "";
+    tableHands.innerHTML = "";
     (state.players || []).forEach(player => {
     const isSelf = state.me?.id === player.id;
     const showdownPlayer = state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id);
@@ -263,21 +239,33 @@ const game = document.querySelector("#game");
     el.innerHTML = `<h3>${escapeHtml(player.name)} ${isSelf ? '<span class="me-tag">(ME)</span>' : ''}</h3>
       <div class="chip-row wallet-chips"></div>
       <div class="chip-row bet-chips"></div>
-      <div>${player.folded ? "Folded" : "Active"}</div>
-      <div class="cards"></div>
-      <div class="rank-label">${showdownPlayer?.rank || ""}</div>
-      <div class="cards rank-used"></div>`;
+      <div>${player.folded ? "Folded" : "Active"}</div>`;
     renderMoney(el.querySelector(".wallet-chips"), "Wallet", player.wallet);
     renderMoney(el.querySelector(".bet-chips"), "Bet", player.bet);
-    renderCards(el.querySelector(".cards"), visibleCards, {
+    players.appendChild(el);
+
+    const hand = document.createElement("div");
+    hand.className = `table-hand ${player.id === state.turn ? "current" : ""} ${isSelf ? "self" : ""}`;
+    hand.innerHTML = `<div>
+      <div class="cards"></div>
+      <div class="rank-label">${showdownPlayer?.rank || ""}</div>
+      <div class="cards rank-used"></div>
+      </div>
+      <div class="table-bet"></div>`;
+    renderCards(hand.querySelector(".cards"), visibleCards, {
       selectable: !state.showdown && isSelf && isReplacePhase(state) && state.turn === state.me?.id,
       rankCards,
     });
+    renderMoney(hand.querySelector(".table-bet"), "Bet", player.bet);
     if (usedCommunityCards.length) {
-      renderCards(el.querySelector(".rank-used"), usedCommunityCards, { rankCards });
+      renderCards(hand.querySelector(".rank-used"), usedCommunityCards, { rankCards });
     }
-    players.appendChild(el);
+    tableHands.appendChild(hand);
     });
+
+    if (joined && state.me && hasSeenRunning && state.showdown) {
+    autoKeepPlaying(state);
+    }
   }
 
   async function refresh() {
@@ -345,8 +333,7 @@ const game = document.querySelector("#game");
     joined = true;
     playerId.value = body.player_id;
     hasSeenRunning = false;
-    gameOverPromptShown = false;
-    hideGameOverPrompt();
+    autoKeepPlayingKey = "";
     showTable();
     window.latestState = body.state;
     render(body.state);
@@ -383,7 +370,6 @@ const game = document.querySelector("#game");
   }
 
   async function leaveTable() {
-    hideGameOverPrompt();
     if (joined) {
     try {
       await send("LEAVE");
@@ -392,23 +378,13 @@ const game = document.querySelector("#game");
 
     joined = false;
     hasSeenRunning = false;
-    gameOverPromptShown = false;
+    autoKeepPlayingKey = "";
     selectedCards.clear();
     clearRaise();
-    clearShowdownPromptTimer();
-    showdownKey = "";
     updateReplaceButton();
     updateActions({ is_running: false, turn: null, me: null, game: {} });
     connection.textContent = "Connected";
     showStart();
-  }
-
-  async function keepPlaying() {
-    hideGameOverPrompt();
-    hasSeenRunning = false;
-    gameOverPromptShown = true;
-    await send("KEEP_PLAYING");
-    requestRefresh().catch(() => {});
   }
 
   document.querySelector("#join").addEventListener("click", () => join().catch(alert));
@@ -422,8 +398,6 @@ const game = document.querySelector("#game");
   document.querySelector("#replaceCards").addEventListener("click", () => replaceSelected().catch(alert));
   document.querySelector("#standPat").addEventListener("click", () => standPat().catch(alert));
   leaveHeader.addEventListener("click", () => leaveTable().catch(alert));
-  document.querySelector("#leaveAfterGame").addEventListener("click", () => leaveTable().catch(alert));
-  document.querySelector("#keepPlaying").addEventListener("click", () => keepPlaying().catch(alert));
   game.addEventListener("change", () => {
     document.querySelector("#gameTitle").textContent = game.value || "Table";
   });

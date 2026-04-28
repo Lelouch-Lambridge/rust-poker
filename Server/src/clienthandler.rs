@@ -6,7 +6,7 @@ use std::thread;
 use log::{error, info, warn, debug};
 
 use poker::{game::Game, hand::Hand, player::Player};
-use server::Table;
+use server::{db_runtime, Table};
 
 use server::db::GameDatabase;
 use crate::servermanager::ServerManager;
@@ -339,8 +339,7 @@ fn handle_join<G: Game, Db: GameDatabase + 'static>(player_id: &mut Option<u64>,
   let db = table.lock().unwrap().db.clone();
   let player_name = name.to_string();
 
-  let rt = tokio::runtime::Runtime::new().unwrap();
-  let player = rt.block_on(async {
+  let player = db_runtime().block_on(async {
     if let Some(mut db_player) = db.fetch_player(parsed_id).await {
       db_player.name = player_name.clone();
       db.upsert_player(&db_player).await;
