@@ -1,0 +1,19 @@
+[package]
+name = "Client"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+nix = { version = "0.29.0", features = ["socket"] }
+sysinfo = "0.33.1"
+serde_json = "1.0"
+socket2 = { version = "0.5.8", features = ["all"] }
+serde = { version = "1.0", features = ["derive"] }
+poker = { path = "../Poker" }
+log = "0.4"
+simple_logger = "1.16"
+env_logger = "0.10"
+
+[lib]
+name = "client"
+path = "src/lib.rs"

@@ -1,0 +1,29 @@
+[package]
+name = "Server"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+poker = { path = "../Poker" }
+serde_json = "1.0"
+socket2 = { version = "0.5", features = ["all"] }
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+simple_logger = "1.16"
+local-ip-address = "0.5"
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = { version = "0.7", features = ["with-chrono-0_4", "with-uuid-1"] }
+bb8 = "0.8"
+bb8-postgres = { version = "0.8", features = ["with-uuid-1"] }
+postgres-types = { version = "0.2", features = ["derive", "with-serde_json-1"] }
+uuid = { version = "1", features = ["v4"] }
+env_logger = "0.10"
+get_if_addrs = "0.5"
+
+[dev-dependencies]
+lazy_static = "1.4.0"
+rand = "0.8.4"
+
+[lib]
+name = "server"
+path = "src/lib.rs"
