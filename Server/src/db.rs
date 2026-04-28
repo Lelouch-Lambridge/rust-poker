@@ -5,7 +5,7 @@ use postgres_types::Json;
 use serde_json::Value;
 use poker::{hand::Hand, player::Player};
 use uuid::Uuid;
-use log::{error, warn, info, debug, trace};
+use log::{error, info, debug, trace};
 
 pub trait GameDatabase: Send + Sync {
   fn new(pool: Pool<PostgresConnectionManager<NoTls>>) -> Self where Self: Sized;
@@ -15,6 +15,8 @@ pub trait GameDatabase: Send + Sync {
   fn fetch_player<'a>(&'a self, id: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = Option<Player>> + Send + 'a>>;
 
   fn upsert_player<'a>(&'a self, player: &'a Player) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>;
+
+  fn delete_player<'a>(&'a self, id: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>>;
 }
 
 #[derive(Clone)]
@@ -78,6 +80,29 @@ impl DbRepo {
     ).await {
       Ok(n) => info!("Upsert success: {} row(s) affected", n),
       Err(e) => error!("Failed to upsert player: {}", e),
+    };
+  }
+
+  pub async fn delete_player(&self, id: u64) {
+    info!("Deleting session player with ID={}", id);
+
+    let client = match self.pool.get().await {
+      Ok(c) => c,
+      Err(e) => {
+        error!("Couldn't get DB connection: {}", e);
+        return;
+      }
+    };
+
+    let id = id as i64;
+    if let Err(e) = client.execute("DELETE FROM game_players WHERE player_id = $1", &[&id]).await {
+      error!("Failed to delete player game links: {}", e);
+      return;
+    }
+
+    match client.execute("DELETE FROM players WHERE id = $1", &[&id]).await {
+      Ok(n) => info!("Deleted {} player row(s)", n),
+      Err(e) => error!("Failed to delete player: {}", e),
     };
   }
 
@@ -173,6 +198,12 @@ impl GameDatabase for DbRepo {
   fn upsert_player<'a>(&'a self, player: &'a Player) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
     Box::pin(async move {
       self.upsert_player(player).await
+    })
+  }
+
+  fn delete_player<'a>(&'a self, id: u64) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()> + Send + 'a>> {
+    Box::pin(async move {
+      self.delete_player(id).await
     })
   }
 }

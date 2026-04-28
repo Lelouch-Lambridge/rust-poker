@@ -238,9 +238,9 @@ fn launch_table<G: Game + Send + 'static, Db: GameDatabase + 'static>(port: u16,
         let table = table_monitor.lock().unwrap();
         table.get_num_players() >= 2 && !table.is_running()
       } {
-        const auto_wait: u64 = 30;
-        info!("Auto-start in {} seconds...", auto_wait);
-        thread::sleep(std::time::Duration::from_secs(auto_wait));
+        const AUTO_WAIT: u64 = 30;
+        info!("Auto-start in {} seconds...", AUTO_WAIT);
+        thread::sleep(std::time::Duration::from_secs(AUTO_WAIT));
 
         let mut table = table_monitor.lock().unwrap();
         if table.get_num_players() >= 2 && !table.is_running() {

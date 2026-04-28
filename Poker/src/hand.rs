@@ -40,6 +40,173 @@ impl HandRank {
   pub fn compare_values(a: &[u8], b: &[u8]) -> Ordering {
     a.iter().rev().cmp(b.iter().rev())
   }
+
+  pub fn cards_used(&self, source: &[u8]) -> Vec<u8> {
+    fn value(card: u8) -> u8 {
+      let (_, value) = Card(card).decode();
+      if value == 1 { 14 } else { value }
+    }
+
+    fn sorted_by_value(source: &[u8]) -> Vec<u8> {
+      let mut cards = source.to_vec();
+      cards.sort_by(|a, b| value(*b).cmp(&value(*a)));
+      cards
+    }
+
+    fn take_value(source: &[u8], target: u8, limit: usize) -> Vec<u8> {
+      sorted_by_value(source)
+        .into_iter()
+        .filter(|card| value(*card) == target)
+        .take(limit)
+        .collect()
+    }
+
+    fn straight_values(high: u8) -> Vec<u8> {
+      if high == 5 {
+        vec![5, 4, 3, 2, 14]
+      } else {
+        (0..5).map(|offset| high - offset).collect()
+      }
+    }
+
+    fn take_straight(source: &[u8], high: u8) -> Vec<u8> {
+      let mut used = Vec::new();
+      for value_target in straight_values(high) {
+        if let Some(card) = sorted_by_value(source)
+          .into_iter()
+          .find(|card| value(*card) == value_target) {
+          used.push(card);
+        }
+      }
+      used
+    }
+
+    match self {
+      HandRank::NoCards() => Vec::new(),
+      HandRank::HighCard(_, _) => sorted_by_value(source).into_iter().take(1).collect(),
+      HandRank::OnePair(pair, _, _) => {
+        take_value(source, *pair, 2)
+      }
+      HandRank::TwoPair(pair_a, pair_b, _, _) => {
+        let mut cards = take_value(source, *pair_a, 2);
+        cards.extend(take_value(source, *pair_b, 2));
+        cards
+      }
+      HandRank::ThreeOfAKind(value, _, _) => {
+        take_value(source, *value, 3)
+      }
+      HandRank::Straight(high, _) => take_straight(source, *high),
+      HandRank::Flush(_, _) => sorted_by_value(source).into_iter().take(5).collect(),
+      HandRank::FullHouse(three, pair, _) => {
+        let mut cards = take_value(source, *three, 3);
+        cards.extend(take_value(source, *pair, 2));
+        cards
+      }
+      HandRank::FourOfAKind(value, _, _) => {
+        take_value(source, *value, 4)
+      }
+      HandRank::StraightFlush(high, _) => take_straight(source, *high),
+      HandRank::RoyalFlush(_) => take_straight(source, 14),
+    }
+  }
+
+  pub fn cards_used_against(&self, source: &[u8], ranks: &[HandRank]) -> Vec<u8> {
+    fn value(card: u8) -> u8 {
+      let (_, value) = Card(card).decode();
+      if value == 1 { 14 } else { value }
+    }
+
+    fn sorted_by_value(source: &[u8]) -> Vec<u8> {
+      let mut cards = source.to_vec();
+      cards.sort_by(|a, b| value(*b).cmp(&value(*a)));
+      cards
+    }
+
+    fn add_kickers(cards: &mut Vec<u8>, source: &[u8], values: &[u8]) {
+      for value_target in values {
+        if let Some(card) = sorted_by_value(source)
+          .into_iter()
+          .find(|card| value(*card) == *value_target && !cards.contains(card)) {
+          cards.push(card);
+        }
+      }
+    }
+
+    fn needed_kickers(own: &[u8], others: Vec<&[u8]>) -> Vec<u8> {
+      let mut needed = 0;
+      for other in others {
+        for index in 0..own.len().min(other.len()) {
+          needed = needed.max(index + 1);
+          if own[index] != other[index] {
+            break;
+          }
+        }
+      }
+      own.iter().take(needed).copied().collect()
+    }
+
+    let mut cards = self.cards_used(source);
+    let same_rank = ranks
+      .iter()
+      .filter(|rank| rank.rank_value() == self.rank_value())
+      .collect::<Vec<_>>();
+
+    if same_rank.len() <= 1 {
+      return cards;
+    }
+
+    match self {
+      HandRank::HighCard(values, _) => {
+        let others = same_rank.iter()
+          .filter_map(|rank| match rank {
+            HandRank::HighCard(other_values, _) => Some(other_values.as_slice()),
+            _ => None,
+          })
+          .collect();
+        cards.clear();
+        add_kickers(&mut cards, source, &needed_kickers(values, others));
+      }
+      HandRank::OnePair(pair, kickers, _) => {
+        let others = same_rank.iter()
+          .filter_map(|rank| match rank {
+            HandRank::OnePair(other_pair, other_kickers, _) if other_pair == pair => Some(other_kickers.as_slice()),
+            _ => None,
+          })
+          .collect();
+        add_kickers(&mut cards, source, &needed_kickers(kickers, others));
+      }
+      HandRank::TwoPair(pair_a, pair_b, kickers, _) => {
+        let others = same_rank.iter()
+          .filter_map(|rank| match rank {
+            HandRank::TwoPair(other_a, other_b, other_kickers, _) if other_a == pair_a && other_b == pair_b => Some(other_kickers.as_slice()),
+            _ => None,
+          })
+          .collect();
+        add_kickers(&mut cards, source, &needed_kickers(kickers, others));
+      }
+      HandRank::ThreeOfAKind(value, kickers, _) => {
+        let others = same_rank.iter()
+          .filter_map(|rank| match rank {
+            HandRank::ThreeOfAKind(other_value, other_kickers, _) if other_value == value => Some(other_kickers.as_slice()),
+            _ => None,
+          })
+          .collect();
+        add_kickers(&mut cards, source, &needed_kickers(kickers, others));
+      }
+      HandRank::FourOfAKind(value, kickers, _) => {
+        let others = same_rank.iter()
+          .filter_map(|rank| match rank {
+            HandRank::FourOfAKind(other_value, other_kickers, _) if other_value == value => Some(other_kickers.as_slice()),
+            _ => None,
+          })
+          .collect();
+        add_kickers(&mut cards, source, &needed_kickers(kickers, others));
+      }
+      _ => {}
+    }
+
+    cards
+  }
 }
 
 impl Ord for HandRank {

@@ -26,4 +26,8 @@ pub trait Game: Display {
   fn determine_winner(&self, players: &[(&u64, &Hand)]) -> Option<u64>;
 
   fn to_broadcast(&self) -> serde_json::Value;
+
+  fn showdown_hand(&self, hand: &Hand) -> Hand {
+    hand.clone()
+  }
 }

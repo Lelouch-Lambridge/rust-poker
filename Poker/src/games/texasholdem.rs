@@ -107,6 +107,12 @@ impl Game for TexasHoldem {
       "community_cards": self.community_cards,
     })
   }
+
+  fn showdown_hand(&self, hand: &Hand) -> Hand {
+    let mut combined = hand.0.clone();
+    combined.extend(&self.community_cards.0);
+    Hand(combined)
+  }
 }
 
 impl fmt::Display for TexasHoldem {

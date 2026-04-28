@@ -57,7 +57,7 @@ pub fn handle_game_client<G: Game, Db: GameDatabase + 'static>(mut stream: TcpSt
   stream.set_read_timeout(Some(Duration::from_secs(1))).ok();
 
   loop {
-    if let Ok(mut table_lock) = table.try_lock() { table_lock.broadcast_state(); }
+    if let Ok(table_lock) = table.try_lock() { table_lock.broadcast_state(); }
 
     let is_turn = if let Some(id) = player_id {
       let table_lock = table.lock().unwrap();

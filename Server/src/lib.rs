@@ -1,5 +1,5 @@
 use std::fmt;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket, SocketAddr, IpAddr, Ipv4Addr};
 use std::sync::{Arc, Mutex};
@@ -25,16 +25,31 @@ pub struct Table<G: Game, Db: GameDatabase> {
   pub socket_udp: UdpSocket,
   pub game: G,
   pub db: Arc<Db>,
+  pub showdown: Option<serde_json::Value>,
+  pub next_game_players: HashSet<u64>,
 }
 
-fn get_local_ip() -> std::net::Ipv4Addr {
-  use std::net::UdpSocket;
-  let socket = UdpSocket::bind("0.0.0.0:0").expect("Failed to bind dummy socket");
-  socket.connect("8.8.8.8:80").expect("Failed to connect dummy socket");
-  match socket.local_addr().expect("No local address").ip() {
-    std::net::IpAddr::V4(ip) => ip,
-    _ => panic!("Only IPv4 supported"),
+fn get_local_ip() -> Ipv4Addr {
+  if let Ok(IpAddr::V4(ip)) = local_ip_address::local_ip() {
+    return ip;
   }
+
+  let socket = match UdpSocket::bind("0.0.0.0:0") {
+    Ok(socket) => socket,
+    Err(e) => {
+      warn!("Failed to bind dummy socket for local IP detection: {}", e);
+      return Ipv4Addr::LOCALHOST;
+    }
+  };
+
+  if socket.connect("8.8.8.8:80").is_ok() {
+    if let Ok(SocketAddr::V4(addr)) = socket.local_addr() {
+      return *addr.ip();
+    }
+  }
+
+  warn!("Unable to detect routed IPv4 address; falling back to loopback");
+  Ipv4Addr::LOCALHOST
 }
 
 impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
@@ -81,7 +96,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       head: None, bettor: None, blind: None, turn: None,
       bet: 0, pot: 0,
       socket_udp: socket_udp_send, udp_port: udp_port.to_string(),
-      game: G::new(), db,
+      game: G::new(), db, showdown: None, next_game_players: HashSet::new(),
     }
   }
 
@@ -250,7 +265,8 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
 
     self.players.remove(&player_id).ok_or("Player not found")?;
-    self.player_send(player_id)
+    self.delete_player(player_id);
+    Ok("REMOVED\n".to_string())
   }
 
   pub fn game_actions(&mut self, player_id: u64, parts: &[&str]) -> Result<String, String>{
@@ -264,6 +280,8 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
   pub fn start_game(&mut self) {
     trace!("Starting Game…");
     self.game_id = Uuid::new_v4();
+    self.showdown = None;
+    self.next_game_players.clear();
     let head = match self.head.as_ref() {
       Some(node) => node.clone(),
       None => {
@@ -357,6 +375,41 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     );
     let Some(winner_id) = winner else { return; };
     info!("{}", winner_id);
+
+    let showdown_entries: Vec<_> = self.players.iter()
+      .filter_map(|(id, node)| {
+        let player = node.lock().ok()?.player.clone();
+        if player.folded {
+          return None;
+        }
+
+        let showdown_hand = self.game.showdown_hand(&player.hand);
+        let rank = showdown_hand.evaluate();
+
+        Some((*id, player, showdown_hand, rank))
+      })
+      .collect();
+    let ranks = showdown_entries
+      .iter()
+      .map(|(_, _, _, rank)| rank.clone())
+      .collect::<Vec<_>>();
+    let showdown_players: Vec<_> = showdown_entries.into_iter()
+      .map(|(id, player, showdown_hand, rank)| {
+        let rank_cards = rank.cards_used_against(&showdown_hand.0, &ranks);
+        json!({
+          "id": id,
+          "name": player.name,
+          "hand": player.hand,
+          "rank": rank.to_string(),
+          "rank_cards": rank_cards,
+        })
+      })
+      .collect();
+    self.showdown = Some(json!({
+      "winner": winner_id,
+      "players": showdown_players,
+    }));
+    self.next_game_players.clear();
     
     let Some(winner_node) = self.players.get(&winner_id) else { return; };
     
@@ -437,6 +490,35 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
   }
 
+  pub fn keep_playing(&mut self, player_id: u64) -> Result<String, String> {
+    if self.showdown.is_none() {
+      return Err("[ERROR] NO SHOWDOWN".to_string());
+    }
+
+    if !self.players.contains_key(&player_id) {
+      return Err("Player not found".to_string());
+    }
+
+    self.next_game_players.insert(player_id);
+    Ok("KEEP_PLAYING\n".to_string())
+  }
+
+  pub fn remove_unconfirmed_players(&mut self) {
+    if self.showdown.is_none() {
+      return;
+    }
+
+    let unconfirmed = self.players
+      .keys()
+      .copied()
+      .filter(|id| !self.next_game_players.contains(id))
+      .collect::<Vec<_>>();
+
+    for id in unconfirmed {
+      let _ = self.remove_player(id);
+    }
+  }
+
   fn round_action(&mut self) -> bool {
     trace!("Round action…");
     if self.game.handle_round_action(&mut self.turn) {
@@ -453,6 +535,17 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
       rt.block_on(async move {
         db.upsert_player(&player).await;
+      });
+    });
+  }
+
+  fn delete_player(&self, player_id: u64) {
+    let db = Arc::clone(&self.db);
+
+    std::thread::spawn(move || {
+      let rt = tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime");
+      rt.block_on(async move {
+        db.delete_player(player_id).await;
       });
     });
   }
@@ -528,9 +621,11 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     json!({
       "turn": turn_id,
       "pot": self.pot,
+      "is_running": self.is_running(),
       "players": players,
       "game": self.game.to_broadcast(),
       "me": me,
+      "showdown": self.showdown,
     })
   }
 
