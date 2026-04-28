@@ -52,9 +52,14 @@ fn database_url_from_parts() -> String {
 }
 
 fn bind_addr() -> SocketAddr {
-  env::var("BIND_ADDR")
-    .or_else(|_| env::var("SERVER_BIND_ADDR"))
-    .unwrap_or_else(|_| "0.0.0.0:8080".to_string())
+  if let Ok(addr) = env::var("BIND_ADDR").or_else(|_| env::var("SERVER_BIND_ADDR")) {
+    return addr
+      .parse()
+      .expect("BIND_ADDR must be a valid socket address, for example 0.0.0.0:8080");
+  }
+
+  let port = env::var("PORT").unwrap_or_else(|_| "8080".to_string());
+  format!("0.0.0.0:{}", port)
     .parse()
-    .expect("BIND_ADDR must be a valid socket address, for example 0.0.0.0:8080")
+    .expect("PORT must be a valid TCP port")
 }
