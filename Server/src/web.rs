@@ -5,6 +5,7 @@ use std::thread;
 use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
+use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse};
 use axum::routing::{get, post};
@@ -20,12 +21,14 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 use server::db::DbRepo;
 use server::Table;
+use tokio::sync::broadcast;
 
 type SharedTable<G> = Arc<Mutex<Table<G, DbRepo>>>;
 
 #[derive(Clone)]
 pub struct WebState {
     tables: Arc<HashMap<String, WebTable>>,
+    updates: broadcast::Sender<()>,
 }
 
 #[derive(Clone)]
@@ -56,6 +59,7 @@ pub async fn serve(db: Arc<DbRepo>) {
     let state = WebState::new(db);
     let app = Router::new()
         .route("/", get(index))
+        .route("/ws", get(websocket))
         .route("/api/games", get(list_games))
         .route("/api/games/:game/state", get(game_state))
         .route("/api/games/:game/join", post(join_game))
@@ -74,31 +78,53 @@ pub async fn serve(db: Arc<DbRepo>) {
 impl WebState {
     fn new(db: Arc<DbRepo>) -> Self {
         let mut tables = HashMap::new();
+        let (updates, _) = broadcast::channel(128);
 
         tables.insert(
             "TexasHoldem".to_string(),
-            WebTable::TexasHoldem(new_web_table::<TexasHoldem>("224.0.1.1:11000", db.clone())),
+            WebTable::TexasHoldem(new_web_table::<TexasHoldem>(
+                "224.0.1.1:11000",
+                db.clone(),
+                updates.clone(),
+            )),
         );
         tables.insert(
             "FiveCardDraw".to_string(),
-            WebTable::FiveCardDraw(new_web_table::<FiveCardDraw>("224.0.1.2:11001", db.clone())),
+            WebTable::FiveCardDraw(new_web_table::<FiveCardDraw>(
+                "224.0.1.2:11001",
+                db.clone(),
+                updates.clone(),
+            )),
         );
         tables.insert(
             "SevenCardStud".to_string(),
-            WebTable::SevenCardStud(new_web_table::<SevenCardStud>("224.0.1.3:11002", db)),
+            WebTable::SevenCardStud(new_web_table::<SevenCardStud>(
+                "224.0.1.3:11002",
+                db,
+                updates.clone(),
+            )),
         );
 
         Self {
             tables: Arc::new(tables),
+            updates,
         }
     }
 
     fn table(&self, game: &str) -> Option<&WebTable> {
         self.tables.get(game)
     }
+
+    fn notify(&self) {
+        let _ = self.updates.send(());
+    }
 }
 
-fn new_web_table<G: Game + Send + 'static>(udp_addr: &str, db: Arc<DbRepo>) -> SharedTable<G> {
+fn new_web_table<G: Game + Send + 'static>(
+    udp_addr: &str,
+    db: Arc<DbRepo>,
+    updates: broadcast::Sender<()>,
+) -> SharedTable<G> {
     let table = Arc::new(Mutex::new(Table::<G, DbRepo>::new(udp_addr, db)));
     let monitor_table = table.clone();
 
@@ -111,6 +137,7 @@ fn new_web_table<G: Game + Send + 'static>(udp_addr: &str, db: Arc<DbRepo>) -> S
             let mut table = monitor_table.lock().unwrap();
             if table.get_num_players() >= 2 && !table.is_running() {
                 table.start_game();
+                let _ = updates.send(());
             }
         }
 
@@ -122,6 +149,35 @@ fn new_web_table<G: Game + Send + 'static>(udp_addr: &str, db: Arc<DbRepo>) -> S
 
 async fn index() -> Html<&'static str> {
     Html(INDEX_HTML)
+}
+
+async fn websocket(ws: WebSocketUpgrade, State(state): State<WebState>) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| websocket_session(socket, state.updates.subscribe()))
+}
+
+async fn websocket_session(mut socket: WebSocket, mut updates: broadcast::Receiver<()>) {
+    let _ = socket.send(Message::Text("refresh".into())).await;
+
+    loop {
+        tokio::select! {
+            update = updates.recv() => {
+                if update.is_err() {
+                    break;
+                }
+
+                if socket.send(Message::Text("refresh".into())).await.is_err() {
+                    break;
+                }
+            }
+            message = socket.recv() => {
+                match message {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Err(_)) => break,
+                    _ => {}
+                }
+            }
+        }
+    }
 }
 
 async fn list_games(State(state): State<WebState>) -> Json<Value> {
@@ -162,12 +218,15 @@ async fn join_game(
     let player_id = req.id;
 
     match table.join(req).await {
-        Ok(message) => Json(json!({
-          "ok": true,
-          "message": message,
-          "state": table.state(Some(player_id)),
-        }))
-        .into_response(),
+        Ok(message) => {
+            state.notify();
+            Json(json!({
+              "ok": true,
+              "message": message,
+              "state": table.state(Some(player_id)),
+            }))
+            .into_response()
+        }
         Err(message) => json_error(StatusCode::BAD_REQUEST, &message),
     }
 }
@@ -182,12 +241,15 @@ async fn player_action(
     };
 
     match table.action(player_id, &req.command) {
-        Ok(message) => Json(json!({
-          "ok": true,
-          "message": message,
-          "state": table.state(Some(player_id)),
-        }))
-        .into_response(),
+        Ok(message) => {
+            state.notify();
+            Json(json!({
+              "ok": true,
+              "message": message,
+              "state": table.state(Some(player_id)),
+            }))
+            .into_response()
+        }
         Err(message) => json_error(StatusCode::BAD_REQUEST, &message),
     }
 }
@@ -403,6 +465,9 @@ const INDEX_HTML: &str = r##"<!doctype html>
     const nameInput = document.querySelector("#name");
     const connection = document.querySelector("#connection");
     let joined = false;
+    let socket = null;
+    let refreshInFlight = false;
+    let refreshQueued = false;
 
     function ensureClientId() {
       let id = localStorage.getItem("pokerClientId");
@@ -500,6 +565,42 @@ const INDEX_HTML: &str = r##"<!doctype html>
       connection.textContent = joined ? `Joined ${game.value}` : "Connected";
     }
 
+    async function requestRefresh() {
+      if (refreshInFlight) {
+        refreshQueued = true;
+        return;
+      }
+
+      refreshInFlight = true;
+      try {
+        await refresh();
+      } finally {
+        refreshInFlight = false;
+      }
+
+      if (refreshQueued) {
+        refreshQueued = false;
+        requestRefresh();
+      }
+    }
+
+    function connectSocket() {
+      if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+
+      const protocol = location.protocol === "https:" ? "wss" : "ws";
+      socket = new WebSocket(`${protocol}://${location.host}/ws`);
+      socket.addEventListener("open", () => {
+        connection.textContent = "Connected";
+        requestRefresh().catch(() => {});
+      });
+      socket.addEventListener("message", () => requestRefresh().catch(() => {}));
+      socket.addEventListener("close", () => {
+        connection.textContent = "Disconnected";
+        setTimeout(connectSocket, 1000);
+      });
+      socket.addEventListener("error", () => socket.close());
+    }
+
     async function loadGames() {
       const body = await api("/api/games");
       game.innerHTML = "";
@@ -509,7 +610,7 @@ const INDEX_HTML: &str = r##"<!doctype html>
         option.textContent = name;
         game.appendChild(option);
       });
-      await refresh();
+      await requestRefresh();
     }
 
     async function join() {
@@ -535,9 +636,10 @@ const INDEX_HTML: &str = r##"<!doctype html>
     document.querySelector("#fold").addEventListener("click", () => send("FOLD").catch(alert));
     document.querySelector("#raise").addEventListener("click", () => send(`RAISE ${document.querySelector("#raiseAmount").value}`).catch(alert));
     document.querySelector("#sendCommand").addEventListener("click", () => send(document.querySelector("#command").value).catch(alert));
-    game.addEventListener("change", () => refresh().catch(alert));
-    setInterval(() => refresh().catch(() => connection.textContent = "Disconnected"), 1500);
+    game.addEventListener("change", () => requestRefresh().catch(alert));
+    setInterval(() => requestRefresh().catch(() => connection.textContent = "Disconnected"), 10000);
     ensureClientId();
+    connectSocket();
     loadGames().catch(alert);
   </script>
 </body>
