@@ -81,6 +81,7 @@
   .card.selectable:hover { transform: translateY(-4px); }
   .card.selected { transform: translateY(-8px); box-shadow: 0 0 0 3px #d9b64c, 0 12px 18px rgba(0,0,0,.3); }
   .card.rank-card { box-shadow: 0 0 0 3px #f0d36d, 0 12px 18px rgba(0,0,0,.3); }
+  .card.rank-card-loser { box-shadow: 0 0 0 3px #b72f3a, 0 12px 18px rgba(0,0,0,.3); }
   .card.red { color: #b72f3a; border-color: #e1a6ad; }
   .card.hidden { color: transparent; background: repeating-linear-gradient(45deg, #244f52 0 5px, #19383b 5px 10px); border-color: #8bb7ad; }
   .hint { color: #b4c5be; font-size: 12px; line-height: 1.35; }

@@ -72,7 +72,7 @@ pub async fn serve(db: Arc<DbRepo>) {
     )
     .with_state(state);
 
-  let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
+  let addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
   let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
   info!("Browser poker server listening on http://{}", addr);
   axum::serve(listener, app).await.unwrap();

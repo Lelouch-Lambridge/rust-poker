@@ -116,7 +116,12 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
   fn rebuild_full_ring(&mut self) {
     if self.players.is_empty() {
       self.head = None;
+      self.bettor = None;
       self.blind = None;
+      self.turn = None;
+      self.showdown = None;
+      self.next_game_players.clear();
+      self.reset();
       return;
     }
 

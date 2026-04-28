@@ -124,7 +124,8 @@ const game = document.querySelector("#game");
     const selectable = options.selectable && card;
     const selected = selectable && selectedCards.has(card);
     const rankCard = card && options.rankCards?.has(card);
-    el.className = `${cardClass(card)} ${selectable ? "selectable" : ""} ${selected ? "selected" : ""} ${rankCard ? "rank-card" : ""}`;
+    const rankClass = rankCard ? (options.losingRankCards ? "rank-card-loser" : "rank-card") : "";
+    el.className = `${cardClass(card)} ${selectable ? "selectable" : ""} ${selected ? "selected" : ""} ${rankClass}`;
     el.textContent = card ? cardLabel(card) : "Hidden";
     if (selectable) {
       el.addEventListener("click", () => {
@@ -229,6 +230,7 @@ const game = document.querySelector("#game");
     (state.players || []).forEach(player => {
     const isSelf = state.me?.id === player.id;
     const showdownPlayer = state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id);
+    const isShowdownLoser = Boolean(showdownPlayer && state.showdown?.winner !== player.id);
     const showdownCards = showdownPlayer?.hand || null;
     const visibleCards = showdownCards || (isSelf ? state.me?.hand || [] : player.hand || []);
     const rankCards = new Set(showdownPlayer?.rank_cards || []);
@@ -238,10 +240,8 @@ const game = document.querySelector("#game");
     el.className = `player ${player.id === state.turn ? "current" : ""} ${isSelf ? "self" : ""} ${state.showdown?.winner === player.id ? "winner" : ""}`;
     el.innerHTML = `<h3>${escapeHtml(player.name)} ${isSelf ? '<span class="me-tag">(ME)</span>' : ''}</h3>
       <div class="chip-row wallet-chips"></div>
-      <div class="chip-row bet-chips"></div>
       <div>${player.folded ? "Folded" : "Active"}</div>`;
     renderMoney(el.querySelector(".wallet-chips"), "Wallet", player.wallet);
-    renderMoney(el.querySelector(".bet-chips"), "Bet", player.bet);
     players.appendChild(el);
 
     const hand = document.createElement("div");
@@ -255,10 +255,14 @@ const game = document.querySelector("#game");
     renderCards(hand.querySelector(".cards"), visibleCards, {
       selectable: !state.showdown && isSelf && isReplacePhase(state) && state.turn === state.me?.id,
       rankCards,
+      losingRankCards: isShowdownLoser,
     });
     renderMoney(hand.querySelector(".table-bet"), "Bet", player.bet);
     if (usedCommunityCards.length) {
-      renderCards(hand.querySelector(".rank-used"), usedCommunityCards, { rankCards });
+      renderCards(hand.querySelector(".rank-used"), usedCommunityCards, {
+        rankCards,
+        losingRankCards: isShowdownLoser,
+      });
     }
     tableHands.appendChild(hand);
     });
