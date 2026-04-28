@@ -2,6 +2,9 @@ const game = document.querySelector("#game");
   const playerId = document.querySelector("#playerId");
   const nameInput = document.querySelector("#name");
   const connection = document.querySelector("#connection");
+  const leaveHeader = document.querySelector("#leaveHeader");
+  const actionWindow = document.querySelector("#actionWindow");
+  const actionHandle = document.querySelector("#actionHandle");
   let joined = false;
   let socket = null;
   let refreshInFlight = false;
@@ -178,7 +181,8 @@ const game = document.querySelector("#game");
     const replacePhase = canAct && isReplacePhase(state);
     const betPhase = canAct && !replacePhase;
 
-    document.querySelector("#waitingHint").classList.toggle("is-hidden", canAct);
+    actionWindow.classList.toggle("is-minimized", !canAct);
+    document.querySelector("#waitingHint").classList.add("is-hidden");
     document.querySelector("#betActions").classList.toggle("is-hidden", !betPhase);
     document.querySelector("#replaceActions").classList.toggle("is-hidden", !replacePhase);
     if (!betPhase) clearRaise();
@@ -187,11 +191,15 @@ const game = document.querySelector("#game");
   function showStart() {
     document.querySelector("#startView").classList.remove("is-hidden");
     document.querySelector("#gameView").classList.add("is-hidden");
+    leaveHeader.classList.add("is-hidden");
+    actionWindow.classList.add("is-hidden");
   }
 
   function showTable() {
     document.querySelector("#startView").classList.add("is-hidden");
     document.querySelector("#gameView").classList.remove("is-hidden");
+    leaveHeader.classList.remove("is-hidden");
+    actionWindow.classList.remove("is-hidden");
     document.querySelector("#gameTitle").textContent = game.value;
   }
 
@@ -222,8 +230,6 @@ const game = document.querySelector("#game");
 
   function render(state) {
     renderPot(state.pot ?? 0);
-    document.querySelector("#turn").textContent = state.turn ?? "-";
-    document.querySelector("#round").textContent = state.game?.round ?? "-";
     const currentHand = new Set(state.me?.hand ?? []);
     selectedCards = new Set([...selectedCards].filter(card => currentHand.has(card)));
     updateReplaceButton();
@@ -415,11 +421,45 @@ const game = document.querySelector("#game");
   document.querySelector("#raise").addEventListener("click", () => raisePending().catch(alert));
   document.querySelector("#replaceCards").addEventListener("click", () => replaceSelected().catch(alert));
   document.querySelector("#standPat").addEventListener("click", () => standPat().catch(alert));
-  document.querySelector("#leaveTable").addEventListener("click", () => leaveTable().catch(alert));
+  leaveHeader.addEventListener("click", () => leaveTable().catch(alert));
   document.querySelector("#leaveAfterGame").addEventListener("click", () => leaveTable().catch(alert));
   document.querySelector("#keepPlaying").addEventListener("click", () => keepPlaying().catch(alert));
   game.addEventListener("change", () => {
     document.querySelector("#gameTitle").textContent = game.value || "Table";
+  });
+  function clampActionWindow(left, top) {
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - actionWindow.offsetWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - actionWindow.offsetHeight - margin);
+    actionWindow.style.left = `${Math.max(margin, Math.min(left, maxLeft))}px`;
+    actionWindow.style.top = `${Math.max(margin, Math.min(top, maxTop))}px`;
+  }
+
+  actionHandle.addEventListener("pointerdown", event => {
+    const rect = actionWindow.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    actionHandle.setPointerCapture(event.pointerId);
+
+    const onMove = moveEvent => {
+      clampActionWindow(moveEvent.clientX - offsetX, moveEvent.clientY - offsetY);
+    };
+
+    const onUp = upEvent => {
+      actionHandle.releasePointerCapture(upEvent.pointerId);
+      actionHandle.removeEventListener("pointermove", onMove);
+      actionHandle.removeEventListener("pointerup", onUp);
+      actionHandle.removeEventListener("pointercancel", onUp);
+    };
+
+    actionHandle.addEventListener("pointermove", onMove);
+    actionHandle.addEventListener("pointerup", onUp);
+    actionHandle.addEventListener("pointercancel", onUp);
+  });
+
+  window.addEventListener("resize", () => {
+    const rect = actionWindow.getBoundingClientRect();
+    clampActionWindow(rect.left, rect.top);
   });
   window.addEventListener("beforeunload", () => {
     if (!joined || !game.value || !playerId.value) return;
