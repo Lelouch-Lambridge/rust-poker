@@ -169,7 +169,12 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
   fn add_player_with_optional_stream(&mut self, player: Player, stream: Option<TcpStream>) -> Result<String, String> {
     trace!("Adding player…");
     let id = player.id;
-    if self.players.contains_key(&player.id) { return Err(format!("Player with ID {} already exists", player.id)); }
+    if let Some(existing_node) = self.players.get(&player.id) {
+      let mut existing = existing_node.lock().map_err(|_| "Lock failed")?;
+      existing.player.name = player.name;
+      existing.stream = stream;
+      return self.player_send(id);
+    }
     if self.players.len() >= MAX_PLAYERS_PER_TABLE {
       return Err(format!("Table is full. Maximum {} players allowed", MAX_PLAYERS_PER_TABLE));
     }

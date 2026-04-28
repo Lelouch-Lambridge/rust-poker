@@ -25,6 +25,52 @@ pub struct DbRepo {
 }
 
 impl DbRepo {
+
+  pub async fn init_schema(&self) {
+    let client = match self.pool.get().await {
+      Ok(c) => c,
+      Err(e) => {
+        error!("Couldn't get DB connection: {}", e);
+        return;
+      }
+    };
+
+    let schema = "
+      CREATE TABLE IF NOT EXISTS players (
+        id BIGINT PRIMARY KEY,
+        name TEXT NOT NULL,
+        wallet BIGINT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS games (
+        game_id UUID PRIMARY KEY,
+        game_type TEXT NOT NULL,
+        winner BIGINT NULL REFERENCES players(id) ON DELETE SET NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS game_states (
+        game_id UUID NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+        round INTEGER NOT NULL,
+        event TEXT NOT NULL,
+        data JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (game_id, round)
+      );
+
+      CREATE TABLE IF NOT EXISTS game_players (
+        game_id UUID NOT NULL REFERENCES games(game_id) ON DELETE CASCADE,
+        player_id BIGINT NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+        PRIMARY KEY (game_id, player_id)
+      );
+    ";
+
+    match client.batch_execute(schema).await {
+      Ok(()) => info!("Database schema ready"),
+      Err(e) => error!("Failed to initialize database schema: {}", e),
+    }
+  }
+
   pub async fn fetch_player(&self, id: u64) -> Option<Player> {
     info!("Fetching player with ID {}", id);
     let client = match self.pool.get().await {

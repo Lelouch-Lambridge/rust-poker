@@ -55,7 +55,7 @@ struct StateQuery {
   player_id: Option<u64>,
 }
 
-pub async fn serve(db: Arc<DbRepo>) {
+pub async fn serve(db: Arc<DbRepo>, addr: SocketAddr) {
   let state = WebState::new(db);
   let app = Router::new()
     .route("/favicon.svg", get(favicon))
@@ -72,7 +72,6 @@ pub async fn serve(db: Arc<DbRepo>) {
     )
     .with_state(state);
 
-  let addr: SocketAddr = "0.0.0.0:8080".parse().unwrap();
   let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
   info!("Browser poker server listening on http://{}", addr);
   axum::serve(listener, app).await.unwrap();
