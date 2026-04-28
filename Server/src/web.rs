@@ -342,6 +342,8 @@ const INDEX_HTML: &str = r##"<!doctype html>
     .player h3 { margin: 0 0 8px; font-size: 15px; }
     .players .cards { margin-top: 10px; }
     .cards { display: flex; gap: 6px; flex-wrap: wrap; min-height: 44px; }
+    .board { align-items: center; min-height: 54px; }
+    .empty-board { color: #596574; font-size: 14px; }
     .card { width: 34px; height: 44px; border: 1px solid #aeb7c4; border-radius: 6px; display: inline-grid; place-items: center; background: #fff; color: #20242a; font-size: 15px; font-weight: 800; line-height: 1; box-shadow: 0 1px 1px rgba(32,36,42,.08); }
     .card.red { color: #b72f3a; border-color: #e1a6ad; }
     .card.hidden { color: transparent; background: repeating-linear-gradient(45deg, #245f73 0 5px, #1e5061 5px 10px); border-color: #1e5061; }
@@ -380,6 +382,10 @@ const INDEX_HTML: &str = r##"<!doctype html>
       <div class="panel">
         <h2>Your Hand</h2>
         <div id="hand" class="cards"></div>
+      </div>
+      <div class="panel">
+        <h2>Table Cards</h2>
+        <div id="board" class="cards board"></div>
       </div>
       <div class="panel">
         <h2>Players</h2>
@@ -448,11 +454,27 @@ const INDEX_HTML: &str = r##"<!doctype html>
       });
     }
 
+    function renderBoard(state) {
+      const board = document.querySelector("#board");
+      const cards = state.game?.community_cards || [];
+      if (cards.length) {
+        renderCards(board, cards);
+        return;
+      }
+
+      board.innerHTML = "";
+      const empty = document.createElement("span");
+      empty.className = "empty-board";
+      empty.textContent = "No table cards";
+      board.appendChild(empty);
+    }
+
     function render(state) {
       document.querySelector("#pot").textContent = state.pot ?? 0;
       document.querySelector("#turn").textContent = state.turn ?? "-";
       document.querySelector("#round").textContent = state.game?.round ?? "-";
       renderCards(document.querySelector("#hand"), state.me?.hand ?? []);
+      renderBoard(state);
       document.querySelector("#raw").textContent = JSON.stringify(state.game, null, 2);
 
       const players = document.querySelector("#players");
