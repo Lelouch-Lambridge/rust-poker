@@ -229,7 +229,7 @@ const game = document.querySelector("#game");
     tableHands.innerHTML = "";
     (state.players || []).forEach(player => {
     const isSelf = state.me?.id === player.id;
-    const showdownPlayer = state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id);
+    const showdownPlayer = player.folded ? null : state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id);
     const isShowdownLoser = Boolean(showdownPlayer && state.showdown?.winner !== player.id);
     const showdownCards = showdownPlayer?.hand || null;
     const visibleCards = showdownCards || (isSelf ? state.me?.hand || [] : player.hand || []);

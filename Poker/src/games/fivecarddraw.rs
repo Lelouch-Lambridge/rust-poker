@@ -108,6 +108,10 @@ impl Game for FiveCardDraw {
   }
   
   fn deal_to_player(&mut self, player: &mut Player) -> Result<(), String> {
+    if player.folded {
+      return Ok(());
+    }
+
     let cards = self.deck.deal(5);
     player.hand.extend(cards.into_iter());
     Ok(())

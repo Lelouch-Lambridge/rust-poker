@@ -48,7 +48,7 @@ impl Game for SevenCardStud {
       
       let _ = self.deal_to_player(&mut player_locked.player);
 
-      current = player_locked.nextf.clone();
+      current = player_locked.next.clone();
       drop(player_locked);
 
       if let Some(next_node) = &current {
@@ -61,6 +61,10 @@ impl Game for SevenCardStud {
   }
 
   fn deal_to_player(&mut self, player: &mut Player) -> Result<(), String> {
+    if player.folded {
+      return Ok(());
+    }
+
     let (down,up) = match self.round {
       0 => (2, 1),
       1..=3 => (0, 1),
