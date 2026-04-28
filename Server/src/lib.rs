@@ -12,6 +12,8 @@ pub mod db;
 use db::GameDatabase;
 use uuid::Uuid;
 
+const MAX_PLAYERS_PER_TABLE: usize = 5;
+
 pub fn db_runtime() -> &'static tokio::runtime::Runtime {
   static DB_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
   DB_RUNTIME.get_or_init(|| tokio::runtime::Runtime::new().expect("Failed to create Tokio runtime"))
@@ -168,6 +170,9 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     trace!("Adding player…");
     let id = player.id;
     if self.players.contains_key(&player.id) { return Err(format!("Player with ID {} already exists", player.id)); }
+    if self.players.len() >= MAX_PLAYERS_PER_TABLE {
+      return Err(format!("Table is full. Maximum {} players allowed", MAX_PLAYERS_PER_TABLE));
+    }
     
     let new_node = Arc::new(Mutex::new(PlayerNode { player, stream, nextf: None, prevf: None, next: None, prev: None, }));
     
