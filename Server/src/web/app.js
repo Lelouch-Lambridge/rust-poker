@@ -5,6 +5,7 @@ const game = document.querySelector("#game");
   const leaveHeader = document.querySelector("#leaveHeader");
   const actionWindow = document.querySelector("#actionWindow");
   const actionHandle = document.querySelector("#actionHandle");
+  const toggleActionWindow = document.querySelector("#toggleActionWindow");
   let joined = false;
   let socket = null;
   let refreshInFlight = false;
@@ -13,6 +14,8 @@ const game = document.querySelector("#game");
   let pendingRaise = 0;
   let hasSeenRunning = false;
   let autoKeepPlayingKey = "";
+  let actionManuallyMinimized = false;
+  let actionWasAvailable = false;
 
   function ensureClientName() {
     if (!localStorage.getItem("pokerClientName")) {
@@ -172,7 +175,19 @@ const game = document.querySelector("#game");
     const replacePhase = canAct && isReplacePhase(state);
     const betPhase = canAct && !replacePhase;
 
-    actionWindow.classList.toggle("is-minimized", !canAct);
+    if (canAct && !actionWasAvailable) {
+    actionManuallyMinimized = false;
+    } else if (!canAct) {
+    actionManuallyMinimized = false;
+    }
+    actionWasAvailable = canAct;
+
+    const minimized = !canAct || actionManuallyMinimized;
+    actionWindow.classList.toggle("is-active", canAct);
+    actionWindow.classList.toggle("is-minimized", minimized);
+    toggleActionWindow.disabled = !canAct;
+    toggleActionWindow.textContent = minimized ? "+" : "-";
+    toggleActionWindow.setAttribute("aria-label", minimized ? "Expand action window" : "Minimize action window");
     document.querySelector("#waitingHint").classList.add("is-hidden");
     document.querySelector("#betActions").classList.toggle("is-hidden", !betPhase);
     document.querySelector("#replaceActions").classList.toggle("is-hidden", !replacePhase);
@@ -383,6 +398,8 @@ const game = document.querySelector("#game");
     joined = false;
     hasSeenRunning = false;
     autoKeepPlayingKey = "";
+    actionManuallyMinimized = false;
+    actionWasAvailable = false;
     selectedCards.clear();
     clearRaise();
     updateReplaceButton();
@@ -402,6 +419,16 @@ const game = document.querySelector("#game");
   document.querySelector("#replaceCards").addEventListener("click", () => replaceSelected().catch(alert));
   document.querySelector("#standPat").addEventListener("click", () => standPat().catch(alert));
   leaveHeader.addEventListener("click", () => leaveTable().catch(alert));
+  toggleActionWindow.addEventListener("click", event => {
+    event.stopPropagation();
+    const state = window.latestState || { is_running: false, turn: null, me: null, game: {} };
+    const canAct = Boolean(joined && state.me && state.turn === state.me.id && state.is_running);
+    if (!canAct) return;
+
+    actionManuallyMinimized = !actionManuallyMinimized;
+    updateActions(state);
+  });
+  toggleActionWindow.addEventListener("pointerdown", event => event.stopPropagation());
   game.addEventListener("change", () => {
     document.querySelector("#gameTitle").textContent = game.value || "Table";
   });

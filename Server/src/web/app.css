@@ -64,11 +64,14 @@
   .chip-button { height: 46px; display: grid; place-items: center; padding: 0; background: transparent; }
   .chip-button .chip { width: 36px; height: 36px; }
   .action-window { position: fixed; z-index: 15; left: 20px; top: 72px; width: 280px; max-width: calc(100vw - 24px); padding: 12px; touch-action: none; }
+  .action-window.is-active { border-color: #f0d36d; box-shadow: 0 0 0 2px rgba(240,211,109,.7), 0 0 28px rgba(240,211,109,.34), 0 16px 40px rgba(0,0,0,.22); }
   .action-window.is-minimized { width: auto; min-width: 150px; padding: 8px 10px; }
   .action-window.is-minimized > :not(.action-handle) { display: none; }
   .action-window.is-minimized .action-handle { margin: 0; padding: 0; }
   .action-handle { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -4px -4px 2px; padding: 4px; cursor: grab; user-select: none; }
   .action-handle:active { cursor: grabbing; }
+  .action-handle-tools { display: flex; align-items: center; gap: 8px; }
+  .action-toggle { width: 28px; height: 28px; padding: 0; line-height: 1; }
   .drag-grip { color: #98aaa6; font-size: 14px; font-weight: 900; letter-spacing: 1px; }
   .players .cards { margin-top: 10px; }
   .rank-used.cards { min-height: 34px; }
@@ -86,4 +89,37 @@
   .card.hidden { color: transparent; background: repeating-linear-gradient(45deg, #244f52 0 5px, #19383b 5px 10px); border-color: #8bb7ad; }
   .hint { color: #b4c5be; font-size: 12px; line-height: 1.35; }
   .rank-label { margin-top: 8px; color: #f0d36d; font-size: 12px; font-weight: 800; }
-  @media (max-width: 760px) { html, body { overflow: auto; } main { height: auto; min-height: calc(100vh - 54px); padding: 10px; } header { padding: 12px 16px; } .header-status { max-width: calc(100vw - 120px); } .felt { min-height: 620px; border-width: 10px; border-radius: 80px; padding: 16px; } .board-panel { width: min(360px, 70vw); } .action-window { left: 12px; top: 64px; width: 260px; } }
+  @media (max-width: 760px) {
+    html, body { overflow: auto; }
+    body { min-height: 100vh; }
+    header { height: 50px; padding: 10px 12px; gap: 10px; }
+    h1 { font-size: 19px; }
+    #connection { font-size: 12px; }
+    #leaveHeader { height: 30px; padding: 0 9px; }
+    .header-status { max-width: calc(100vw - 96px); gap: 6px; }
+    main { height: auto; min-height: calc(100vh - 50px); padding: 6px; }
+    .table { grid-template-rows: auto minmax(0, 1fr); gap: 6px; }
+    .players { display: flex; gap: 6px; max-height: none; overflow-x: auto; overflow-y: hidden; padding-bottom: 2px; }
+    .player { flex: 0 0 118px; padding: 6px; }
+    .player h3 { margin-bottom: 4px; font-size: 12px; }
+    .chip-row { min-height: 14px; margin-top: 2px; }
+    .players .money-chips { display: none; }
+    .felt { height: auto; min-height: 360px; border-width: 8px; border-radius: 64px; padding: 10px; overflow: auto; }
+    .felt::before { inset: 12px; border-radius: 54px; }
+    .table-hands { left: 18px; right: 18px; top: 16px; display: flex; gap: 6px; max-height: 96px; overflow: auto hidden; }
+    .table-hand { flex: 0 0 122px; grid-template-columns: minmax(0, 1fr) auto; gap: 4px; padding: 2px 3px; }
+    .table-bet { min-width: 32px; gap: 2px; }
+    .table-bet .money-chips { max-width: 54px; gap: 2px; }
+    .table-bet .chip { width: 18px; height: 18px; border-width: 2px; font-size: 7px; }
+    .rank-label { margin-top: 3px; font-size: 10px; }
+    .rank-used.cards { min-height: 26px; }
+    .rank-used .card { width: 22px; height: 30px; font-size: 10px; }
+    .board-panel { top: 57%; width: min(300px, 66vw); min-height: 136px; gap: 6px; padding: 10px; }
+    .pot-center { min-width: 126px; padding: 8px 10px; gap: 5px; }
+    .pot-center strong { font-size: 20px; }
+    .pot-center .chip { width: 22px; height: 22px; border-width: 2px; font-size: 8px; }
+    .board { min-height: 42px; }
+    .board .card { width: 30px; height: 42px; font-size: 12px; }
+    .action-window { left: 8px; top: 58px; width: 248px; max-width: calc(100vw - 16px); padding: 10px; }
+    .action-window.is-minimized { min-width: 132px; padding: 7px 9px; }
+  }
