@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Poker</title>
+  <link rel="stylesheet" href="/app.css">
+</head>
+<body>
+  <header>
+  <h1>Poker</h1>
+  <div id="connection">Disconnected</div>
+  </header>
+  <section id="startView" class="panel start-view">
+  <h2>Choose a table</h2>
+  <label>Game <select id="game"></select></label>
+  <input id="playerId" type="hidden">
+  <label>Name <input id="name" value="Player"></label>
+  <button id="join">Join Table</button>
+  </section>
+  <main id="gameView" class="is-hidden">
+  <aside class="panel stack">
+    <h2 id="gameTitle">Table</h2>
+    <div id="waitingHint" class="hint">Waiting for your turn.</div>
+    <div id="betActions" class="actions">
+    <div class="row">
+      <button id="check" class="secondary">Check</button>
+      <button id="fold" class="danger">Fold</button>
+    </div>
+    <div class="raise-builder">
+      <div id="raisePreview" class="raise-preview"></div>
+      <div id="raiseChips" class="chip-picker">
+      <button class="chip-button" data-chip="10" type="button"><span class="chip denom-10">10</span></button>
+      <button class="chip-button" data-chip="25" type="button"><span class="chip denom-25">25</span></button>
+      <button class="chip-button" data-chip="100" type="button"><span class="chip denom-100">100</span></button>
+      <button class="chip-button" data-chip="500" type="button"><span class="chip denom-500">500</span></button>
+      </div>
+      <div class="row">
+      <button id="clearRaise" class="secondary" type="button">Clear</button>
+      <button id="raise" type="button" disabled>Raise</button>
+      </div>
+    </div>
+    </div>
+    <div id="replaceActions" class="actions is-hidden">
+    <button id="replaceCards" class="secondary" disabled>Replace Selected</button>
+    <button id="standPat" class="secondary">Stand Pat</button>
+    <div class="hint">Select cards from your hand to replace them.</div>
+    </div>
+    <button id="leaveTable" class="danger">Leave Table</button>
+  </aside>
+  <section class="table">
+    <div class="summary">
+    <div class="metric"><span>Turn</span><strong id="turn">-</strong></div>
+    <div class="metric"><span>Round</span><strong id="round">-</strong></div>
+    </div>
+    <div class="felt">
+    <div id="players" class="players"></div>
+    <div class="board-panel">
+      <div class="pot-center"><span>Pot</span><strong id="potTotal">0</strong><div id="potChips" class="money-chips"></div></div>
+      <h2>Table Cards</h2>
+      <div id="board" class="cards board"></div>
+    </div>
+    </div>
+  </section>
+  </main>
+  <div id="gameOverModal" class="modal-backdrop is-hidden">
+  <div class="modal">
+    <h2>Keep playing?</h2>
+    <div class="hint">This hand is over. Stay seated for the next hand or leave the table.</div>
+    <div class="row">
+    <button id="keepPlaying">Keep Playing</button>
+    <button id="leaveAfterGame" class="danger">Leave Table</button>
+    </div>
+  </div>
+  </div>
+  <script src="/app.js"></script>
+</body>
+</html>

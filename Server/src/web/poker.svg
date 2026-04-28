@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- back card -->
+  <rect x="16" y="10" width="28" height="40" rx="4" fill="#315957" stroke="#18292b" stroke-width="2"></rect>
+  <text x="20" y="22" font-size="12" fill="white">A</text>
+
+  <!-- front card -->
+  <g transform="rotate(10 40 32)">
+    <rect x="24" y="10" width="28" height="40" rx="4" fill="#315957" stroke="#18292b" stroke-width="2"></rect>
+    <text x="28" y="22" font-size="12" fill="white">A</text>
+    <text x="34" y="38" font-size="16" fill="white">♠</text>
+  </g>
+</svg>
