@@ -98,7 +98,15 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     self.pot = 0;
   }
 
-  pub fn add_player(&mut self, player: Player, stream: TcpStream) -> Result<String, String> {
+  pub fn add_player(&mut self, player: Player) -> Result<String, String> {
+    self.add_player_with_optional_stream(player, None)
+  }
+
+  pub fn add_player_with_stream(&mut self, player: Player, stream: TcpStream) -> Result<String, String> {
+    self.add_player_with_optional_stream(player, Some(stream))
+  }
+
+  fn add_player_with_optional_stream(&mut self, player: Player, stream: Option<TcpStream>) -> Result<String, String> {
     trace!("Adding player…");
     let id = player.id;
     if self.players.contains_key(&player.id) { return Err(format!("Player with ID {} already exists", player.id)); }
@@ -506,6 +514,26 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     snapshot
   }
 
+  pub fn player_view_state(&self, player_id: Option<u64>) -> serde_json::Value {
+    let turn_id = self.turn.as_ref().map(|node| node.lock().unwrap().player.id);
+
+    let players: Vec<serde_json::Value> = self.players.values()
+      .map(|node| json!(node.lock().unwrap().player.clone().to_broadcast()))
+      .collect();
+
+    let me = player_id
+      .and_then(|id| self.players.get(&id).cloned())
+      .map(|node| json!(node.lock().unwrap().player.clone().to_stream()));
+
+    json!({
+      "turn": turn_id,
+      "pot": self.pot,
+      "players": players,
+      "game": self.game.to_broadcast(),
+      "me": me,
+    })
+  }
+
   pub fn players_updated(&self) {
     let update_req_message = "[UPDATED]";
     let broadcast_addr = self.udp_port.clone();
@@ -515,10 +543,13 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
   pub fn player_send(&self, player_id: u64) -> Result<String, String> {
     trace!("Player sending…");
     let node = self.players.get(&player_id).ok_or("Player not found")?;
-    let (player_data, mut stream) = {
+    let (player_data, stream) = {
       let player_locked = node.try_lock().map_err(|_| "Mutex poisoned")?;
-      let stream_clone = player_locked.stream.try_clone().map_err(|e| e.to_string())?;
       let data = player_locked.player.to_stream();
+      let stream_clone = match &player_locked.stream {
+        Some(stream) => Some(stream.try_clone().map_err(|e| e.to_string())?),
+        None => None,
+      };
       (data, stream_clone)
     };
     
@@ -527,7 +558,9 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     
     let message = format!("[UPDATE] {}\n", response);
     debug!("{}", message);
-    stream.write_all(message.as_bytes()).map_err(|e| format!("Write failed: {}", e))?;
+    if let Some(mut stream) = stream {
+      stream.write_all(message.as_bytes()).map_err(|e| format!("Write failed: {}", e))?;
+    }
     
     Ok(message)
   }
@@ -572,9 +605,11 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
         while let Some(node) = current.take() {
           let player_node = node.lock().unwrap();
 
-          if let Ok(mut stream) = player_node.stream.try_clone() {
-            if let Err(e) = stream.write_all(message.as_bytes()) {
-              error!("Failed to send game state to player {}: {}", player_node.player.id, e);
+          if let Some(stream) = &player_node.stream {
+            if let Ok(mut stream) = stream.try_clone() {
+              if let Err(e) = stream.write_all(message.as_bytes()) {
+                error!("Failed to send game state to player {}: {}", player_node.player.id, e);
+              }
             }
           }
 

@@ -20,7 +20,7 @@ fn dummy_stream() -> TcpStream {
 fn make_node(player: Player) -> Arc<Mutex<PlayerNode>> {
   Arc::new(Mutex::new(PlayerNode {
     player,
-    stream: dummy_stream(),
+    stream: Some(dummy_stream()),
     next: None,
     prev: None,
     nextf: None,

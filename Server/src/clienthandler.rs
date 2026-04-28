@@ -9,6 +9,7 @@ use poker::{game::Game, hand::Hand, player::Player};
 use server::Table;
 
 use server::db::GameDatabase;
+use crate::servermanager::ServerManager;
 
 fn ping_client(stream: &mut TcpStream) -> bool {
   match stream.write_all(b"PING\n") {
@@ -359,13 +360,13 @@ fn handle_join<G: Game, Db: GameDatabase + 'static>(player_id: &mut Option<u64>,
   });
 
   let cloned_stream = stream.try_clone().map_err(|e| format!("[ERROR] {}", e))?;
-  table.lock().unwrap().add_player(player, cloned_stream)?;
+  table.lock().unwrap().add_player_with_stream(player, cloned_stream)?;
   let _ = stream.write_all(b"JOINED\n");
   Ok(())
 }
 
 // ========== Lobby Client Handling ==========
-pub fn handle_lobby_client<Db: GameDatabase + 'static>(mut stream: TcpStream, server_manager: Arc<Mutex<super::ServerManager<Db>>>) {
+pub fn handle_lobby_client<Db: GameDatabase + 'static>(mut stream: TcpStream, server_manager: Arc<Mutex<ServerManager<Db>>>) {
   stream.set_read_timeout(Some(Duration::from_secs(1))).ok();
   
   let mut lobby_client_added = false;

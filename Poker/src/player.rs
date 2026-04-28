@@ -27,7 +27,7 @@ pub struct BroadcastPlayer {
 #[derive(Debug)]
 pub struct PlayerNode {
   pub player: Player,
-  pub stream: TcpStream,
+  pub stream: Option<TcpStream>,
   pub nextf: Option<Arc<Mutex<PlayerNode>>>,
   pub prevf: Option<Arc<Mutex<PlayerNode>>>,
   pub next: Option<Arc<Mutex<PlayerNode>>>,
