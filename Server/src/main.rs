@@ -25,11 +25,14 @@ async fn main() {
     NoTls,
   ).expect("DATABASE_URL or DB_* settings must be a valid Postgres connection config");
 
-  let pool = Pool::builder().build(manager).await.unwrap();
+  let pool = Pool::builder().build_unchecked(manager);
   let db = Arc::new(DbRepo::new(pool));
-  db.init_schema().await;
+  let schema_db = db.clone();
+  tokio::spawn(async move {
+    schema_db.init_schema().await;
+  });
 
-  println!("Poker Web Server Starting...");
+  println!("Poker Web Server Starting on http://{}...", bind_addr);
   web::serve(db, bind_addr).await;
 }
 

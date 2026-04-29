@@ -449,8 +449,14 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       .map(|(_, _, _, rank)| rank.clone())
       .collect::<Vec<_>>();
     let showdown_players: Vec<_> = showdown_entries.into_iter()
-      .map(|(id, player, showdown_hand, rank)| {
-        let rank_cards = rank.cards_used_against(&showdown_hand.0, &ranks);
+      .enumerate()
+      .map(|(index, (id, player, showdown_hand, rank))| {
+        let other_ranks = ranks
+          .iter()
+          .enumerate()
+          .filter_map(|(rank_index, rank)| if rank_index == index { None } else { Some(rank.clone()) })
+          .collect::<Vec<_>>();
+        let rank_cards = rank.cards_used_against(&showdown_hand.0, &other_ranks);
         json!({
           "id": id,
           "name": player.name,

@@ -244,7 +244,7 @@ const game = document.querySelector("#game");
     tableHands.innerHTML = "";
     (state.players || []).forEach(player => {
     const isSelf = state.me?.id === player.id;
-    const showdownPlayer = player.folded ? null : state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id);
+    const showdownPlayer = state.showdown?.players?.find(showdownPlayer => showdownPlayer.id === player.id) || null;
     const isShowdownLoser = Boolean(showdownPlayer && state.showdown?.winner !== player.id);
     const showdownCards = showdownPlayer?.hand || null;
     const visibleCards = showdownCards || (isSelf ? state.me?.hand || [] : player.hand || []);
@@ -255,7 +255,7 @@ const game = document.querySelector("#game");
     el.className = `player ${player.id === state.turn ? "current" : ""} ${isSelf ? "self" : ""} ${state.showdown?.winner === player.id ? "winner" : ""}`;
     el.innerHTML = `<h3>${escapeHtml(player.name)} ${isSelf ? '<span class="me-tag">(ME)</span>' : ''}</h3>
       <div class="chip-row wallet-chips"></div>
-      <div>${player.folded ? "Folded" : "Active"}</div>`;
+      <div>${showdownPlayer ? "Showdown" : (player.folded ? "Folded" : "Active")}</div>`;
     renderMoney(el.querySelector(".wallet-chips"), "Wallet", player.wallet);
     players.appendChild(el);
 

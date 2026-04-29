@@ -151,7 +151,7 @@ impl HandRank {
       .filter(|rank| rank.rank_value() == self.rank_value())
       .collect::<Vec<_>>();
 
-    if same_rank.len() <= 1 {
+    if same_rank.is_empty() {
       return cards;
     }
 

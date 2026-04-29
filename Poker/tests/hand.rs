@@ -39,3 +39,31 @@ fn test_to_broadcast_face_up_only() {
   assert_eq!(broadcast[0], hand[0]);
   assert_eq!(broadcast[1], 0);
 }
+
+#[test]
+fn test_cards_used_against_two_pair_only_needed_kickers() {
+  let first = Hand(vec![
+    card(0, 2), card(1, 2),
+    card(0, 3), card(1, 3),
+    card(0, 13), card(0, 12), card(0, 7),
+  ]);
+  let second = Hand(vec![
+    card(2, 2), card(3, 2),
+    card(2, 3), card(3, 3),
+    card(1, 13), card(1, 10), card(1, 8),
+  ]);
+
+  let first_rank = first.evaluate();
+  let second_rank = second.evaluate();
+
+  let first_used = first_rank.cards_used_against(&first.0, &[second_rank.clone()]);
+  let second_used = second_rank.cards_used_against(&second.0, &[first_rank]);
+
+  assert!(first_used.contains(&card(0, 13)));
+  assert!(first_used.contains(&card(0, 12)));
+  assert!(!first_used.contains(&card(0, 7)));
+
+  assert!(second_used.contains(&card(1, 13)));
+  assert!(second_used.contains(&card(1, 10)));
+  assert!(!second_used.contains(&card(1, 8)));
+}
