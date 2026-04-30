@@ -253,9 +253,10 @@ const game = document.querySelector("#game");
     const usedCommunityCards = (showdownPlayer?.rank_cards || []).filter(card => communityCards.includes(card));
     const el = document.createElement("article");
     el.className = `player ${player.id === state.turn ? "current" : ""} ${isSelf ? "self" : ""} ${state.showdown?.winner === player.id ? "winner" : ""}`;
+    const status = showdownPlayer ? "Showdown" : (player.folded ? "Folded" : (player.wallet === 0 ? "All In" : "Active"));
     el.innerHTML = `<h3>${escapeHtml(player.name)} ${isSelf ? '<span class="me-tag">(ME)</span>' : ''}</h3>
       <div class="chip-row wallet-chips"></div>
-      <div>${showdownPlayer ? "Showdown" : (player.folded ? "Folded" : "Active")}</div>`;
+      <div>${status}</div>`;
     renderMoney(el.querySelector(".wallet-chips"), "Wallet", player.wallet);
     players.appendChild(el);
 
@@ -382,6 +383,21 @@ const game = document.querySelector("#game");
     await send(`RAISE ${amount}`);
   }
 
+  async function checkAction() {
+    clearRaise();
+    await send("CHECK");
+  }
+
+  async function foldAction() {
+    clearRaise();
+    await send("FOLD");
+  }
+
+  async function allInAction() {
+    clearRaise();
+    await send("ALL_IN");
+  }
+
   async function standPat() {
     selectedCards.clear();
     updateReplaceButton();
@@ -409,8 +425,9 @@ const game = document.querySelector("#game");
   }
 
   document.querySelector("#join").addEventListener("click", () => join().catch(alert));
-  document.querySelector("#check").addEventListener("click", () => send("CHECK").catch(alert));
-  document.querySelector("#fold").addEventListener("click", () => send("FOLD").catch(alert));
+  document.querySelector("#check").addEventListener("click", () => checkAction().catch(alert));
+  document.querySelector("#allIn").addEventListener("click", () => allInAction().catch(alert));
+  document.querySelector("#fold").addEventListener("click", () => foldAction().catch(alert));
   document.querySelectorAll("[data-chip]").forEach(button => {
     button.addEventListener("click", () => addRaise(Number(button.dataset.chip)));
   });

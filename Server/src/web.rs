@@ -460,6 +460,7 @@ fn run_action<G: Game + Send + 'static>(
         .map_err(|_| "[ERROR] INVALID AMOUNT".to_string())?;
       table.lock().unwrap().raise(player_id, amount)
     }
+    ["ALL_IN"] => table.lock().unwrap().all_in(player_id),
     ["CHECK"] => table.lock().unwrap().check(player_id),
     ["FOLD"] => table.lock().unwrap().fold(player_id),
     _ => Err("[ERROR] INVALID COMMAND".to_string()),

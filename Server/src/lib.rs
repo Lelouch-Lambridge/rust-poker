@@ -209,6 +209,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
 
   pub fn raise(&mut self, player_id: u64, amount: u64) -> Result<String, String> {
     trace!("Raising…");
+    if amount == 0 { return Err("Raise amount must be greater than zero".into()); }
     let node = self.players.get(&player_id).ok_or("Player not found")?;
     self.bettor = Some(node.clone());
     let mut player_locked = node.lock().map_err(|_| "Lock failed")?;
@@ -219,6 +220,29 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     player_locked.player.bet += amount;
     self.pot += amount;
     self.bet = player_locked.player.bet;
+
+    let player = player_locked.player.clone();
+    drop(player_locked);
+    self.persist_player(player);
+    self.player_send(player_id)
+  }
+
+  pub fn all_in(&mut self, player_id: u64) -> Result<String, String> {
+    trace!("Going all in…");
+    let node = self.players.get(&player_id).ok_or("Player not found")?;
+    let mut player_locked = node.lock().map_err(|_| "Lock failed")?;
+    let amount = player_locked.player.wallet;
+
+    if amount == 0 { return Err("Player is already all in".into()); }
+
+    player_locked.player.wallet = 0;
+    player_locked.player.bet += amount;
+    self.pot += amount;
+
+    if player_locked.player.bet > self.bet {
+      self.bet = player_locked.player.bet;
+      self.bettor = Some(node.clone());
+    }
 
     let player = player_locked.player.clone();
     drop(player_locked);
@@ -237,7 +261,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
 
     let diff = self.bet - player_locked.player.bet;
-    if player_locked.player.wallet < diff { return Err("Insufficient funds to check".into()); }
+    if player_locked.player.wallet < diff { return Err("Insufficient funds to check; go all in or fold".into()); }
 
     self.pot += diff;
     player_locked.player.bet = self.bet;
@@ -472,11 +496,8 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }));
     self.next_game_players.clear();
     
+    self.pay_showdown_pots();
     let Some(winner_node) = self.players.get(&winner_id) else { return; };
-    
-    let mut winner_locked = winner_node.lock().unwrap();
-    winner_locked.player.wallet += self.pot;
-    drop(winner_locked);
     
     for (id, node) in self.players.iter() {
       let mut player_node = node.lock().unwrap();
@@ -509,14 +530,19 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     trace!("Advancing turn…");
     let Some(current_node) = self.turn.clone() else { return; };
     let current_id = current_node.lock().unwrap().player.id;
-    let next = current_node.lock().unwrap().next.clone();
-    let Some(next_player) = next else { return; };
+    let Some(next_player) = self.next_betting_node(&current_node) else {
+      self.finish_remaining_rounds();
+      return;
+    };
     
     self.turn = Some(next_player.clone());
     
     let is_round_complete = {
       let bettor_id = self.bettor.as_ref().map(|n| n.lock().unwrap().player.id);
-      next_player.lock().unwrap().player.id == bettor_id.unwrap_or(0)
+      let bettor_all_in = self.bettor.as_ref().is_some_and(|node| {
+        node.lock().unwrap().player.wallet == 0
+      });
+      next_player.lock().unwrap().player.id == bettor_id.unwrap_or(0) || bettor_all_in
     };
     
     let all_matched = {
@@ -527,7 +553,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       while let Some(player_node) = current.take() {
         let player_locked = player_node.lock().unwrap();
         
-        if !first_player && player_locked.player.bet != self.bet {
+        if !first_player && player_locked.player.wallet > 0 && player_locked.player.bet != self.bet {
           matched = false;
           break;
         }
@@ -587,6 +613,99 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       return false;
     }
     true
+  }
+
+  fn next_betting_node(&self, current_node: &Arc<Mutex<PlayerNode>>) -> Option<Arc<Mutex<PlayerNode>>> {
+    let mut current = current_node.lock().unwrap().next.clone();
+
+    while let Some(node) = current.clone() {
+      let player = node.lock().unwrap().player.clone();
+      if !player.folded && player.wallet > 0 {
+        return Some(node);
+      }
+
+      let next = node.lock().unwrap().next.clone();
+      if next.as_ref().is_some_and(|candidate| Arc::ptr_eq(candidate, current_node)) {
+        break;
+      }
+      current = next;
+    }
+
+    None
+  }
+
+  fn finish_remaining_rounds(&mut self) {
+    for _ in 0..20 {
+      self.game.advance_round();
+      if !self.round_action() {
+        return;
+      }
+    }
+  }
+
+  fn pay_showdown_pots(&mut self) {
+    let mut levels = self.players
+      .values()
+      .filter_map(|node| {
+        let bet = node.lock().ok()?.player.bet;
+        (bet > 0).then_some(bet)
+      })
+      .collect::<Vec<_>>();
+    levels.sort_unstable();
+    levels.dedup();
+
+    let mut previous = 0;
+    let mut paid = 0;
+
+    for level in levels {
+      let contributors = self.players
+        .values()
+        .filter(|node| node.lock().unwrap().player.bet >= level)
+        .count() as u64;
+      let pot = (level - previous) * contributors;
+      previous = level;
+
+      let winner_id = self.players
+        .iter()
+        .filter_map(|(id, node)| {
+          let player = node.lock().ok()?.player.clone();
+          if player.folded || player.bet < level {
+            return None;
+          }
+
+          Some((*id, self.game.showdown_hand(&player.hand).evaluate()))
+        })
+        .max_by(|(_, rank_a), (_, rank_b)| rank_a.cmp(rank_b))
+        .map(|(id, _)| id);
+
+      if let Some(winner_id) = winner_id {
+        if let Some(winner_node) = self.players.get(&winner_id) {
+          winner_node.lock().unwrap().player.wallet += pot;
+          paid += pot;
+        }
+      }
+    }
+
+    if paid < self.pot {
+      let fallback_winner = self.game.determine_winner(
+        &self.players
+          .iter()
+          .filter_map(|(id, node)| {
+            let player = node.lock().ok()?.player.clone();
+            (!player.folded).then_some((id, player.hand))
+          })
+          .collect::<Vec<_>>()
+          .iter()
+          .map(|(id, hand)| (*id, hand))
+          .collect::<Vec<_>>()
+      );
+
+      if let Some(winner_id) = fallback_winner {
+        if let Some(winner_node) = self.players.get(&winner_id) {
+          winner_node.lock().unwrap().player.wallet += self.pot - paid;
+        }
+      }
+    }
   }
 
   fn persist_player(&self, player: Player) {

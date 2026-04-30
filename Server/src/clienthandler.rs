@@ -228,6 +228,26 @@ pub fn handle_game_client<G: Game, Db: GameDatabase + 'static>(mut stream: TcpSt
           }
         }
       }
+      ["ALL_IN"] => {
+        let result = table.lock().unwrap().all_in(id);
+        match result {
+          Ok(msg) => {
+            if let Err(e) = stream.write_all(msg.as_bytes()) {
+              error!("Error writing to player {}: {}", id, e);
+              handle_player_disconnect(id, &table, is_turn);
+              return;
+            }
+          },
+          Err(e) => {
+            if let Err(write_err) = stream.write_all(e.as_bytes()) {
+              error!("Error writing to player {}: {}", id, write_err);
+              handle_player_disconnect(id, &table, is_turn);
+              return;
+            }
+            continue;
+          }
+        }
+      }
       ["CHECK"] => {
         let result = table.lock().unwrap().check(id);
         match result {

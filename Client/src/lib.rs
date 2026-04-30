@@ -382,6 +382,19 @@ impl Client {
     };
   }
 
+  pub fn all_in(&self) {
+    info!("Going all in");
+    let result = self.send_command("ALL_IN");
+    match result {
+      Ok(response) if response.starts_with("[ERROR]") => {
+        warn!("{}", response);
+        return;
+      },
+      Ok(msg) => info!("OK: {}", msg),
+      Err(e) => error!("Failed to go all in: {}", e),
+    };
+  }
+
   pub fn fold(&self) {
     info!("Folding");
     let result = self.send_command("FOLD");
@@ -551,6 +564,7 @@ impl Client {
       println!("  REPLACE/RE: Replace cards");
       println!("  RAISE/R <amount>: Raise bet");
       println!("  CHECK/C: Check");
+      println!("  ALL_IN/ALLIN/A: Bet your remaining wallet");
       println!("  FOLD/F: Fold hand");
       println!("  UPDATE/U: Update info");
       println!("  PRINT/P: Show current status");
@@ -622,6 +636,9 @@ impl Client {
         }
         "CHECK" | "C" => {
           self.check();
+        }
+        "ALLIN" | "ALL_IN" | "A" => {
+          self.all_in();
         }
         "FOLD" | "F" => {
           self.fold();
