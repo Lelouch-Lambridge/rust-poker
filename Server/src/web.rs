@@ -131,6 +131,13 @@ fn new_web_table<G: Game + Send + 'static>(
   let monitor_table = table.clone();
 
   thread::spawn(move || loop {
+    {
+      let mut table = monitor_table.lock().unwrap();
+      if table.expire_timed_out_turn().is_some() {
+        let _ = updates.send(());
+      }
+    }
+
     let should_start = {
       let table = monitor_table.lock().unwrap();
       table.get_num_players() >= 2 && !table.is_running()

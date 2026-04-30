@@ -2,6 +2,7 @@ use std::fmt;
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 use std::net::{TcpStream, UdpSocket, SocketAddr, IpAddr, Ipv4Addr};
+use std::time::{Duration, Instant};
 use std::sync::{Arc, Mutex, OnceLock};
 use socket2::{Socket, Domain, Type, Protocol, SockRef};
 use serde_json::{json, to_string};
@@ -13,6 +14,7 @@ use db::GameDatabase;
 use uuid::Uuid;
 
 const MAX_PLAYERS_PER_TABLE: usize = 5;
+const TURN_TIMEOUT: Duration = Duration::from_secs(60);
 
 pub fn db_runtime() -> &'static tokio::runtime::Runtime {
   static DB_RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
@@ -34,6 +36,7 @@ pub struct Table<G: Game, Db: GameDatabase> {
   pub db: Arc<Db>,
   pub showdown: Option<serde_json::Value>,
   pub next_game_players: HashSet<u64>,
+  turn_started_at: Option<Instant>,
 }
 
 fn get_local_ip() -> Ipv4Addr {
@@ -104,6 +107,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       bet: 0, pot: 0,
       socket_udp: socket_udp_send, udp_port: udp_port.to_string(),
       game: G::new(), db, showdown: None, next_game_players: HashSet::new(),
+      turn_started_at: None,
     }
   }
 
@@ -123,6 +127,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       self.turn = None;
       self.showdown = None;
       self.next_game_players.clear();
+      self.turn_started_at = None;
       self.reset();
       return;
     }
@@ -308,6 +313,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     if let Some(turn_node) = &self.turn {
       if Arc::ptr_eq(turn_node, &node) { self.turn = prev_active.clone(); }
     }
+    self.mark_turn_started();
 
     if let (Some(prev), Some(next)) = (prev_active, next_active) {
       if Arc::ptr_eq(&prev, &next) { self.end_game(); }
@@ -424,6 +430,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     } else {
       self.turn = blind_node.lock().unwrap().next.clone();
     }
+    self.mark_turn_started();
 
     self.round_action();
     self.players_updated();
@@ -519,6 +526,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
     self.turn = None;
     self.bettor = None;
+    self.turn_started_at = None;
     self.pot = 0;
 
     let winner = winner_node.lock().unwrap().player.clone();
@@ -536,6 +544,7 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     };
     
     self.turn = Some(next_player.clone());
+    self.mark_turn_started();
     
     let is_round_complete = {
       let bettor_id = self.bettor.as_ref().map(|n| n.lock().unwrap().player.id);
@@ -575,6 +584,29 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
       }
       self.players_updated();
     }
+  }
+
+  pub fn expire_timed_out_turn(&mut self) -> Option<u64> {
+    if self.showdown.is_some() || !self.is_running() {
+      return None;
+    }
+
+    let started_at = self.turn_started_at?;
+    if started_at.elapsed() < TURN_TIMEOUT {
+      return None;
+    }
+
+    let player_id = self.turn.as_ref()?.lock().unwrap().player.id;
+    info!("Player {} timed out after {} seconds", player_id, TURN_TIMEOUT.as_secs());
+    if self.remove_player(player_id).is_ok() {
+      if self.is_running() {
+        self.advance_turn();
+      }
+      self.players_updated();
+      return Some(player_id);
+    }
+
+    None
   }
 
   pub fn keep_playing(&mut self, player_id: u64) -> Result<String, String> {
@@ -632,6 +664,10 @@ impl<G: Game, Db: GameDatabase + 'static> Table<G, Db> {
     }
 
     None
+  }
+
+  fn mark_turn_started(&mut self) {
+    self.turn_started_at = self.turn.as_ref().map(|_| Instant::now());
   }
 
   fn finish_remaining_rounds(&mut self) {

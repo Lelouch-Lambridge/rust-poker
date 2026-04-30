@@ -234,6 +234,13 @@ fn launch_table<G: Game + Send + 'static, Db: GameDatabase + 'static>(port: u16,
         break;
       }
 
+      {
+        let mut table = table_monitor.lock().unwrap();
+        if table.expire_timed_out_turn().is_some() {
+          table.broadcast_state();
+        }
+      }
+
       if {
         let table = table_monitor.lock().unwrap();
         table.get_num_players() >= 2 && !table.is_running()
